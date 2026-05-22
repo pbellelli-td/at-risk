@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Activation Tracker — TaxDome CSAM</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f6fa; color: #1a1a2e; padding: 28px; }
+
+  .header { margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  .header h1 { font-size: 18px; font-weight: 800; }
+  .header p { font-size: 12px; color: #9599b3; margin-top: 3px; }
+
+  .status-bar { padding: 8px 14px; border-radius: 8px; font-size: 11px; font-weight: 600; margin-bottom: 16px; display: inline-block; }
+  .status-ok      { background: #edfaf7; color: #2bbfa4; border: 1px solid #b2f0e8; }
+  .status-err     { background: #fff0f0; color: #f25c5c; border: 1px solid #fecaca; }
+  .status-loading { background: #eef3fd; color: #4e80ee; border: 1px solid #bfcffa; }
+
+  .stats { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+  .stat { background: #fff; border-radius: 10px; padding: 12px 18px; border: 1px solid #e8eaf2; text-align: center; min-width: 90px; }
+  .stat .sv { font-size: 22px; font-weight: 800; }
+  .stat .sl { font-size: 10px; color: #9599b3; font-weight: 600; text-transform: uppercase; margin-top: 2px; }
+
+  .form-bar { background: #fff; border-radius: 12px; padding: 16px 20px; border: 1px solid #e8eaf2; margin-bottom: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 10px; font-weight: 600; color: #9599b3; text-transform: uppercase; letter-spacing: 0.05em; }
+  .field input, .field select { padding: 8px 10px; border: 1px solid #e0e2ef; border-radius: 8px; font-size: 12px; color: #1a1a2e; background: #f8f9fc; outline: none; font-family: inherit; }
+  .field input:focus, .field select:focus { border-color: #4e80ee; background: #fff; }
+  .field input { width: 170px; }
+  .field.wide input { width: 210px; }
+  .btn { padding: 8px 20px; border: none; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; height: 34px; }
+  .btn-add  { background: #4e80ee; color: #fff; }
+  .btn-add:hover { background: #3a6dd8; }
+  .btn-sec  { background: #f8f9fc; border: 1px solid #e0e2ef; color: #6b6f8a; }
+  .btn-sec:hover { background: #eef3fd; color: #4e80ee; border-color: #4e80ee; }
+
+  .filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .filter-btn { padding: 5px 14px; border-radius: 20px; border: 1px solid #e0e2ef; background: #fff; font-size: 11px; font-weight: 600; color: #6b6f8a; cursor: pointer; }
+  .filter-btn.active { background: #4e80ee; color: #fff; border-color: #4e80ee; }
+
+  .table-wrap { background: #fff; border-radius: 12px; border: 1px solid #e8eaf2; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead { background: #f8f9fc; }
+  th { padding: 11px 14px; text-align: left; font-size: 10px; font-weight: 700; color: #9599b3; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e8eaf2; white-space: nowrap; }
+  td { padding: 10px 14px; border-bottom: 1px solid #f0f1f7; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafbff; }
+
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+  .track-Escalate  { background: #f3eeff; color: #7c5cbf; }
+  .track-Activate  { background: #fff0f0; color: #f25c5c; }
+  .track-Nudge     { background: #fff8ec; color: #f5a623; }
+  .track-Triage    { background: #eef3fd; color: #4e80ee; }
+
+  .outcome-sel { padding: 4px 8px; border: 1px solid #e0e2ef; border-radius: 6px; font-size: 11px; background: #f8f9fc; color: #1a1a2e; cursor: pointer; font-family: inherit; }
+  .out-Activated    { background: #edfaf7; color: #2bbfa4; border-color: #b2f0e8; }
+  .out-No-Reply     { background: #fff0f0; color: #f25c5c; border-color: #fecaca; }
+  .out-In-Progress  { background: #fff8ec; color: #f5a623; border-color: #fde68a; }
+  .out-Booked       { background: #eef3fd; color: #4e80ee; border-color: #bfcffa; }
+  .out-Pending      { background: #f8f9fc; color: #9599b3; }
+
+  .btn-del { background: none; border: none; color: #ddd; cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 4px; }
+  .btn-del:hover { color: #f25c5c; background: #fff0f0; }
+  .empty { padding: 40px; text-align: center; color: #b0b4c8; font-size: 13px; }
+  .loading-row td { color: #b0b4c8; font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Activation Tracker — At-Risk Firms</h1>
+    <p>International CSAM Team · May–June 2026 · Live sync via Supabase</p>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button class="btn btn-sec" onclick="exportCSV()">⬇ Export CSV</button>
+    <button class="btn btn-sec" onclick="loadData()">↻ Refresh</button>
+  </div>
+</div>
+
+<div id="status" class="status-bar status-loading">⟳ Connecting to Supabase...</div>
+
+<div class="stats" id="stats">
+  <div class="stat"><div class="sv">—</div><div class="sl">Total</div></div>
+</div>
+
+<div class="form-bar">
+  <div class="field wide"><label>Account Name</label><input id="f-account" placeholder="Firm name" /></div>
+  <div class="field">
+    <label>CSAM</label>
+    <select id="f-csam">
+      <option value="">Select</option>
+      <option>Julia</option>
+      <option>Maria</option>
+      <option>Valentina</option>
+      <option>Paolo</option>
+      <option>Reina</option>
+      <option>Piera</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Market</label>
+    <select id="f-market">
+      <option value="">Select</option>
+      <option>Italy</option>
+      <option>UK</option>
+      <option>DACH</option>
+      <option>Romania</option>
+      <option>AU/NZ</option>
+      <option>Japan</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Track</label>
+    <select id="f-track">
+      <option value="">Select</option>
+      <option>Escalate</option>
+      <option>Activate</option>
+      <option>Nudge</option>
+      <option>Triage</option>
+    </select>
+  </div>
+  <div class="field wide"><label>Action</label><input id="f-action" placeholder="e.g. Book re-kickoff call" /></div>
+  <div class="field"><label>Notes</label><input id="f-notes" placeholder="Optional" style="width:140px;" /></div>
+  <div class="field">
+    <label>Outcome</label>
+    <select id="f-outcome">
+      <option>Pending</option>
+      <option>In Progress</option>
+      <option>Booked</option>
+      <option>Activated</option>
+      <option>No Reply</option>
+    </select>
+  </div>
+  <button class="btn btn-add" onclick="addRow()">+ Add</button>
+</div>
+
+<div class="filters">
+  <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+  <button class="filter-btn" onclick="setFilter('track:Escalate',this)">🐋 Escalate</button>
+  <button class="filter-btn" onclick="setFilter('track:Activate',this)">🔥 Activate</button>
+  <button class="filter-btn" onclick="setFilter('track:Nudge',this)">⚡ Nudge</button>
+  <button class="filter-btn" onclick="setFilter('track:Triage',this)">⚠️ Triage</button>
+  <button class="filter-btn" onclick="setFilter('outcome:Activated',this)">✅ Activated</button>
+  <button class="filter-btn" onclick="setFilter('outcome:No Reply',this)">🔴 No Reply</button>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Account</th>
+        <th>CSAM</th>
+        <th>Market</th>
+        <th>Track</th>
+        <th>Action</th>
+        <th>Notes</th>
+        <th>Outcome</th>
+        <th>Date</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr class="loading-row"><td colspan="10" style="text-align:center;padding:30px;color:#b0b4c8;">Loading data...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  const SUPABASE_URL = 'https://uqfazpmjxfzymvjftwtg.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxZmF6cG1qeGZ6eW12amZ0d3RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0NDA3NjUsImV4cCI6MjA5NTAxNjc2NX0.JPsVk4GZ5Vs_U4yMnroKxP7z1vAsijCzDOCdMc1D-xQ';
+
+  const { createClient } = supabase;
+  const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  let allData = [];
+  let activeFilter = 'all';
+
+  const outcomeClass = { 'Activated': 'out-Activated', 'No Reply': 'out-No-Reply', 'In Progress': 'out-In-Progress', 'Booked': 'out-Booked', 'Pending': 'out-Pending' };
+
+  function setStatus(msg, type) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status-bar status-' + type;
+  }
+
+  async function loadData() {
+    setStatus('⟳ Loading data...', 'loading');
+    const { data, error } = await db.from('activation_tracker').select('*').order('created_at', { ascending: false });
+    if (error) { setStatus('✗ Connection error: ' + error.message, 'err'); return; }
+    allData = data || [];
+    setStatus('✓ Connected · ' + allData.length + ' accounts loaded · Last sync: ' + new Date().toLocaleTimeString(), 'ok');
+    render();
+  }
+
+  async function addRow() {
+    const account = document.getElementById('f-account').value.trim();
+    const csam    = document.getElementById('f-csam').value;
+    const market  = document.getElementById('f-market').value;
+    const track   = document.getElementById('f-track').value;
+    const action  = document.getElementById('f-action').value.trim();
+    const notes   = document.getElementById('f-notes').value.trim();
+    const outcome = document.getElementById('f-outcome').value;
+    if (!account || !csam || !track) { alert('Account, CSAM and Track are required.'); return; }
+
+    setStatus('⟳ Saving...', 'loading');
+    const { error } = await db.from('activation_tracker').insert([{ account, csam, market, track, action, notes, outcome }]);
+    if (error) { setStatus('✗ Save failed: ' + error.message, 'err'); return; }
+
+    ['f-account','f-action','f-notes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('f-csam').value = '';
+    document.getElementById('f-market').value = '';
+    document.getElementById('f-track').value = '';
+    document.getElementById('f-outcome').value = 'Pending';
+    await loadData();
+  }
+
+  async function updateOutcome(id, val) {
+    const { error } = await db.from('activation_tracker').update({ outcome: val }).eq('id', id);
+    if (error) { setStatus('✗ Update failed: ' + error.message, 'err'); return; }
+    const row = allData.find(r => r.id === id);
+    if (row) row.outcome = val;
+    renderStats();
+    setStatus('✓ Updated · ' + new Date().toLocaleTimeString(), 'ok');
+  }
+
+  async function deleteRow(id) {
+    if (!confirm('Remove this account from the tracker?')) return;
+    const { error } = await db.from('activation_tracker').delete().eq('id', id);
+    if (error) { setStatus('✗ Delete failed: ' + error.message, 'err'); return; }
+    await loadData();
+  }
+
+  function setFilter(f, el) {
+    activeFilter = f;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    render();
+  }
+
+  function renderStats() {
+    const t = allData.length;
+    const activated   = allData.filter(r => r.outcome === 'Activated').length;
+    const booked      = allData.filter(r => r.outcome === 'Booked').length;
+    const inProgress  = allData.filter(r => r.outcome === 'In Progress').length;
+    const noReply     = allData.filter(r => r.outcome === 'No Reply').length;
+    const pending     = allData.filter(r => r.outcome === 'Pending').length;
+    document.getElementById('stats').innerHTML = `
+      <div class="stat"><div class="sv">${t}</div><div class="sl">Total</div></div>
+      <div class="stat"><div class="sv" style="color:#2bbfa4">${activated}</div><div class="sl">Activated</div></div>
+      <div class="stat"><div class="sv" style="color:#4e80ee">${booked}</div><div class="sl">Booked</div></div>
+      <div class="stat"><div class="sv" style="color:#f5a623">${inProgress}</div><div class="sl">In Progress</div></div>
+      <div class="stat"><div class="sv" style="color:#9599b3">${pending}</div><div class="sl">Pending</div></div>
+      <div class="stat"><div class="sv" style="color:#f25c5c">${noReply}</div><div class="sl">No Reply</div></div>
+    `;
+  }
+
+  function render() {
+    renderStats();
+    let filtered = allData;
+    if (activeFilter !== 'all') {
+      const [key, val] = activeFilter.split(':');
+      filtered = allData.filter(r => r[key] === val);
+    }
+    const tbody = document.getElementById('tbody');
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty">No accounts match this filter.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = filtered.map((r, i) => `
+      <tr>
+        <td style="color:#b0b4c8;font-size:11px;">${i+1}</td>
+        <td style="font-weight:700;">${r.account}</td>
+        <td style="color:#6b6f8a;">${r.csam || '—'}</td>
+        <td style="color:#6b6f8a;">${r.market || '—'}</td>
+        <td><span class="pill track-${r.track}">${r.track}</span></td>
+        <td style="color:#6b6f8a;max-width:180px;">${r.action || '—'}</td>
+        <td style="color:#9599b3;font-size:11px;max-width:140px;">${r.notes || '—'}</td>
+        <td>
+          <select class="outcome-sel out-${(r.outcome||'Pending').replace(' ','-')}"
+            onchange="updateOutcome(${r.id}, this.value); this.className='outcome-sel out-'+this.value.replace(' ','-')">
+            ${['Pending','In Progress','Booked','Activated','No Reply'].map(o =>
+              `<option ${r.outcome===o?'selected':''}>${o}</option>`).join('')}
+          </select>
+        </td>
+        <td style="color:#b0b4c8;font-size:11px;white-space:nowrap;">${r.date_added || ''}</td>
+        <td><button class="btn-del" onclick="deleteRow(${r.id})">✕</button></td>
+      </tr>
+    `).join('');
+  }
+
+  function exportCSV() {
+    const headers = ['Account','CSAM','Market','Track','Action','Notes','Outcome','Date'];
+    const rows = allData.map(r => [r.account, r.csam, r.market, r.track, r.action, r.notes, r.outcome, r.date_added]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v||''}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = 'activation-tracker.csv';
+    a.click();
+  }
+
+  loadData();
+</script>
+</body>
+</html>
